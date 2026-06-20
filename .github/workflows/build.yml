@@ -48,7 +48,7 @@ jobs:
             echo "Sem icone, usando padrao"
           fi
 
-      - name: Adicionar permissoes GPS
+      - name: Adicionar permissoes GPS e v2 embedding
         working-directory: myapp
         run: |
           python3 - << 'PYEOF'
@@ -73,6 +73,9 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2"/>
               </application>
               <queries>
                   <intent>
@@ -83,7 +86,7 @@ jobs:
           </manifest>"""
           with open("android/app/src/main/AndroidManifest.xml", "w") as f:
               f.write(manifest)
-          print("AndroidManifest atualizado!")
+          print("AndroidManifest com v2 embedding atualizado!")
           PYEOF
 
       - name: Build APK
