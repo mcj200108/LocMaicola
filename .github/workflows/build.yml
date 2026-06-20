@@ -19,9 +19,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Instalar Flutter
+      - name: Instalar Flutter 3.19.6
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.19.6'
           channel: 'stable'
 
       - name: Criar projeto Flutter limpo
@@ -39,12 +40,10 @@ jobs:
       - name: Aplicar icone personalizado
         run: |
           if [ -f assets/icon.png ]; then
-            cp assets/icon.png myapp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-            cp assets/icon.png myapp/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-            cp assets/icon.png myapp/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-            cp assets/icon.png myapp/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-            cp assets/icon.png myapp/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-            echo "Icone aplicado com sucesso"
+            for dir in xxxhdpi xxhdpi xhdpi hdpi mdpi; do
+              cp assets/icon.png myapp/android/app/src/main/res/mipmap-$dir/ic_launcher.png
+            done
+            echo "Icone aplicado"
           else
             echo "Sem icone, usando padrao"
           fi
@@ -84,7 +83,7 @@ jobs:
           </manifest>"""
           with open("android/app/src/main/AndroidManifest.xml", "w") as f:
               f.write(manifest)
-          print("AndroidManifest.xml atualizado!")
+          print("AndroidManifest atualizado!")
           PYEOF
 
       - name: Build APK
