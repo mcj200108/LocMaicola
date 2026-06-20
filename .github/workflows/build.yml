@@ -1,0 +1,101 @@
+name: Build APK Android
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Criar projeto Flutter limpo
+        run: flutter create --org com.maicola --project-name locmaicola --platforms android myapp
+
+      - name: Copiar código e pubspec
+        run: |
+          cp lib/main.dart myapp/lib/main.dart
+          cp pubspec.yaml myapp/pubspec.yaml
+
+      - name: Aplicar ícone personalizado
+        run: |
+          if [ -f assets/icon.png ]; then
+            echo "Ícone encontrado, aplicando..."
+            mkdir -p myapp/assets
+            cp assets/icon.png myapp/assets/icon.png
+            cat >> myapp/pubspec.yaml << 'EOF'
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+  min_sdk_android: 21
+EOF
+            cd myapp
+            flutter pub add flutter_launcher_icons --dev
+            flutter pub get
+            dart run flutter_launcher_icons
+          else
+            echo "Sem ícone personalizado, usando padrão do Flutter."
+            cd myapp && flutter pub get
+          fi
+
+      - name: Adicionar permissões GPS
+        run: |
+          cat > myapp/android/app/src/main/AndroidManifest.xml << 'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+              <application
+                  android:label="Minha Localizacao"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher"
+                  android:allowBackup="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW"/>
+                      <data android:scheme="https"/>
+                  </intent>
+              </queries>
+          </manifest>
+          EOF
+
+      - name: Build APK
+        working-directory: myapp
+        run: flutter build apk --release --split-per-abi
+
+      - name: Salvar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-minha-localizacao
+          path: myapp/build/app/outputs/flutter-apk/*.apk
+          retention-days: 7
