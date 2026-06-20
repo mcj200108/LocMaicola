@@ -48,10 +48,25 @@ jobs:
             echo "Sem icone, usando padrao"
           fi
 
-      - name: Adicionar permissoes GPS e v2 embedding
+      - name: Corrigir versao Kotlin e AndroidManifest
         working-directory: myapp
         run: |
           python3 - << 'PYEOF'
+          import re
+
+          # Corrigir kotlin_version no build.gradle raiz
+          with open("android/build.gradle", "r") as f:
+              content = f.read()
+          content = re.sub(
+              r"ext\.kotlin_version\s*=\s*['\"].*?['\"]",
+              "ext.kotlin_version = '1.9.0'",
+              content
+          )
+          with open("android/build.gradle", "w") as f:
+              f.write(content)
+          print("kotlin_version atualizado para 1.9.0")
+
+          # Corrigir AndroidManifest com v2 embedding e permissoes GPS
           manifest = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -86,7 +101,7 @@ jobs:
           </manifest>"""
           with open("android/app/src/main/AndroidManifest.xml", "w") as f:
               f.write(manifest)
-          print("AndroidManifest com v2 embedding atualizado!")
+          print("AndroidManifest atualizado com v2 embedding!")
           PYEOF
 
       - name: Build APK
