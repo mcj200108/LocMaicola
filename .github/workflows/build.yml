@@ -27,16 +27,10 @@ jobs:
 
       - name: Criar projeto e compilar APK
         run: |
-          # Criar projeto Flutter limpo
           flutter create --org com.maicola --project-name locmaicola --platforms android myapp
-
-          # Copiar codigo
           cp lib/main.dart myapp/lib/main.dart
           cp pubspec.yaml myapp/pubspec.yaml
-
           cd myapp
-
-          # Instalar dependencias
           flutter pub get
 
           # Aplicar icone se existir
@@ -47,18 +41,76 @@ jobs:
             echo "Icone aplicado"
           fi
 
-          # Mostrar estrutura Android gerada pelo Flutter
-          echo "=== Estrutura android/ ==="
-          find android -name "*.gradle" -o -name "*.kts" -o -name "*.toml" 2>/dev/null
-          
-          echo "=== settings.gradle ==="
-          cat android/settings.gradle 2>/dev/null || cat android/settings.gradle.kts 2>/dev/null || echo "nao encontrado"
-          
-          echo "=== app/build.gradle ==="
-          cat android/app/build.gradle 2>/dev/null || cat android/app/build.gradle.kts 2>/dev/null || echo "nao encontrado"
+          # Corrigir AndroidManifest com GPS e v2 embedding
+          python3 - << 'PYEOF'
+          manifest = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+              <application
+                  android:label="Minha Localizacao"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher"
+                  android:allowBackup="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2"/>
+              </application>
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW"/>
+                      <data android:scheme="https"/>
+                  </intent>
+              </queries>
+          </manifest>"""
+          with open("android/app/src/main/AndroidManifest.xml", "w") as f:
+              f.write(manifest)
+          print("AndroidManifest corrigido!")
+          PYEOF
 
-          echo "=== gradle/libs.versions.toml ==="
-          cat android/gradle/libs.versions.toml 2>/dev/null || echo "nao encontrado"
+          # Corrigir settings.gradle.kts para usar Kotlin 2.3.20 corretamente
+          cat > android/settings.gradle.kts << 'KTS'
+          pluginManagement {
+              val flutterSdkPath = run {
+                  val properties = java.util.Properties()
+                  file("local.properties").inputStream().use { properties.load(it) }
+                  val flutterSdkPath = properties.getProperty("flutter.sdk")
+                  require(flutterSdkPath != null) { "flutter.sdk not set in local.properties" }
+                  flutterSdkPath
+              }
+              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          plugins {
+              id("dev.flutter.flutter-plugin-loader") version "1.0.0"
+              id("com.android.application") version "8.7.0" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          include(":app")
+          KTS
 
-      - name: Salvar APK placeholder
-        run: echo "Build em diagnostico"
+          # Compilar APK
+          flutter build apk --release --split-per-abi
+
+      - name: Salvar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-minha-localizacao
+          path: myapp/build/app/outputs/flutter-apk/*.apk
+          retention-days: 7
