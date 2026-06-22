@@ -19,73 +19,43 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Instalar Flutter estavel
+      - name: Instalar Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      - name: Criar projeto Flutter limpo
-        run: flutter create --org com.maicola --project-name locmaicola --platforms android myapp
-
-      - name: Copiar codigo e pubspec
+      - name: Criar projeto e compilar APK
         run: |
+          # Criar projeto Flutter limpo
+          flutter create --org com.maicola --project-name locmaicola --platforms android myapp
+
+          # Copiar codigo
           cp lib/main.dart myapp/lib/main.dart
           cp pubspec.yaml myapp/pubspec.yaml
 
-      - name: Instalar dependencias
-        working-directory: myapp
-        run: flutter pub get
+          # Entrar na pasta do projeto
+          cd myapp
 
-      - name: Aplicar icone personalizado
-        run: |
-          if [ -f assets/icon.png ]; then
+          # Instalar dependencias
+          flutter pub get
+
+          # Aplicar icone se existir
+          if [ -f ../assets/icon.png ]; then
             for dir in xxxhdpi xxhdpi xhdpi hdpi mdpi; do
-              cp assets/icon.png myapp/android/app/src/main/res/mipmap-$dir/ic_launcher.png
+              cp ../assets/icon.png android/app/src/main/res/mipmap-$dir/ic_launcher.png
             done
             echo "Icone aplicado"
-          else
-            echo "Sem icone, usando padrao"
           fi
 
-      - name: Corrigir arquivos Android
-        working-directory: myapp
-        run: |
+          # Mostrar build.gradle para debug
+          echo "=== android/build.gradle ==="
+          cat android/build.gradle
+          echo "=== android/app/build.gradle ==="
+          cat android/app/build.gradle
+
+          # Corrigir AndroidManifest com GPS e v2 embedding
           python3 - << 'PYEOF'
-          import re
-
-          # Ler versao do kotlin usada pelo flutter
-          with open("android/build.gradle", "r") as f:
-              content = f.read()
-          print("=== build.gradle original ===")
-          print(content)
-
-          # Pegar a versao do classpath do kotlin que o flutter gerou
-          match = re.search(r"kotlin-gradle-plugin:([\d.]+)", content)
-          if match:
-              kotlin_ver = match.group(1)
-              print(f"Kotlin version encontrada: {kotlin_ver}")
-          else:
-              kotlin_ver = "1.9.22"
-              print(f"Usando kotlin padrao: {kotlin_ver}")
-
-          # Substituir stdlib no app/build.gradle pela mesma versao
-          with open("android/app/build.gradle", "r") as f:
-              app_content = f.read()
-          print("=== app/build.gradle original ===")
-          print(app_content)
-
-          # Adicionar kotlinOptions se nao existir
-          if "kotlinOptions" not in app_content:
-              app_content = app_content.replace(
-                  "compileOptions {",
-                  "compileOptions {"
-              )
-
-          with open("android/app/build.gradle", "w") as f:
-              f.write(app_content)
-
-          # Corrigir AndroidManifest
           manifest = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -120,12 +90,11 @@ jobs:
           </manifest>"""
           with open("android/app/src/main/AndroidManifest.xml", "w") as f:
               f.write(manifest)
-          print("Arquivos corrigidos!")
+          print("AndroidManifest corrigido!")
           PYEOF
 
-      - name: Build APK
-        working-directory: myapp
-        run: flutter build apk --release --split-per-abi
+          # Compilar APK
+          flutter build apk --release --split-per-abi
 
       - name: Salvar APK
         uses: actions/upload-artifact@v4
@@ -133,3 +102,4 @@ jobs:
           name: apk-minha-localizacao
           path: myapp/build/app/outputs/flutter-apk/*.apk
           retention-days: 7
+
