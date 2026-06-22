@@ -19,11 +19,11 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Instalar Flutter 3.19.6
+      - name: Instalar Flutter estavel
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
           channel: 'stable'
+          cache: true
 
       - name: Criar projeto Flutter limpo
         run: flutter create --org com.maicola --project-name locmaicola --platforms android myapp
@@ -48,47 +48,44 @@ jobs:
             echo "Sem icone, usando padrao"
           fi
 
-      - name: Reescrever build.gradle com Kotlin correto
+      - name: Corrigir arquivos Android
         working-directory: myapp
         run: |
           python3 - << 'PYEOF'
-          # Reescrever build.gradle raiz completo
-          build_gradle = """buildscript {
-              ext.kotlin_version = '1.9.22'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.1.0'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-              }
-          }
+          import re
 
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
+          # Ler versao do kotlin usada pelo flutter
+          with open("android/build.gradle", "r") as f:
+              content = f.read()
+          print("=== build.gradle original ===")
+          print(content)
 
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
+          # Pegar a versao do classpath do kotlin que o flutter gerou
+          match = re.search(r"kotlin-gradle-plugin:([\d.]+)", content)
+          if match:
+              kotlin_ver = match.group(1)
+              print(f"Kotlin version encontrada: {kotlin_ver}")
+          else:
+              kotlin_ver = "1.9.22"
+              print(f"Usando kotlin padrao: {kotlin_ver}")
 
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
-          """
-          with open("android/build.gradle", "w") as f:
-              f.write(build_gradle)
-          print("build.gradle reescrito com kotlin 1.9.22!")
+          # Substituir stdlib no app/build.gradle pela mesma versao
+          with open("android/app/build.gradle", "r") as f:
+              app_content = f.read()
+          print("=== app/build.gradle original ===")
+          print(app_content)
 
-          # Reescrever AndroidManifest com v2 embedding e GPS
+          # Adicionar kotlinOptions se nao existir
+          if "kotlinOptions" not in app_content:
+              app_content = app_content.replace(
+                  "compileOptions {",
+                  "compileOptions {"
+              )
+
+          with open("android/app/build.gradle", "w") as f:
+              f.write(app_content)
+
+          # Corrigir AndroidManifest
           manifest = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -123,73 +120,7 @@ jobs:
           </manifest>"""
           with open("android/app/src/main/AndroidManifest.xml", "w") as f:
               f.write(manifest)
-          print("AndroidManifest atualizado!")
-
-          # Reescrever app/build.gradle
-          app_gradle = """def localProperties = new Properties()
-          def localPropertiesFile = rootProject.file('local.properties')
-          if (localPropertiesFile.exists()) {
-              localPropertiesFile.withReader('UTF-8') { reader ->
-                  localProperties.load(reader)
-              }
-          }
-
-          def flutterRoot = localProperties.getProperty('flutter.sdk')
-          if (flutterRoot == null) {
-              throw new GradleException("Flutter SDK not found.")
-          }
-
-          def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
-          def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
-
-          apply plugin: 'com.android.application'
-          apply plugin: 'kotlin-android'
-          apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
-
-          android {
-              namespace "com.maicola.locmaicola"
-              compileSdkVersion 34
-              ndkVersion flutter.ndkVersion
-
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
-              }
-
-              kotlinOptions {
-                  jvmTarget = '1.8'
-              }
-
-              sourceSets {
-                  main.java.srcDirs += 'src/main/kotlin'
-              }
-
-              defaultConfig {
-                  applicationId "com.maicola.locmaicola"
-                  minSdkVersion 21
-                  targetSdkVersion 34
-                  versionCode flutterVersionCode.toInteger()
-                  versionName flutterVersionName
-              }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.debug
-                  }
-              }
-          }
-
-          flutter {
-              source '../..'
-          }
-
-          dependencies {
-              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22"
-          }
-          """
-          with open("android/app/build.gradle", "w") as f:
-              f.write(app_gradle)
-          print("app/build.gradle reescrito!")
+          print("Arquivos corrigidos!")
           PYEOF
 
       - name: Build APK
