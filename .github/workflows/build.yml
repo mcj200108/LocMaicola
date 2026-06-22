@@ -48,21 +48,47 @@ jobs:
             echo "Sem icone, usando padrao"
           fi
 
-      - name: Mostrar build.gradle antes da correcao
-        working-directory: myapp
-        run: cat android/build.gradle
-
-      - name: Corrigir versao Kotlin
-        working-directory: myapp
-        run: |
-          sed -i "s/ext.kotlin_version.*/ext.kotlin_version = '1.9.22'/" android/build.gradle
-          echo "=== build.gradle depois ==="
-          cat android/build.gradle
-
-      - name: Adicionar permissoes GPS e v2 embedding
+      - name: Reescrever build.gradle com Kotlin correto
         working-directory: myapp
         run: |
           python3 - << 'PYEOF'
+          # Reescrever build.gradle raiz completo
+          build_gradle = """buildscript {
+              ext.kotlin_version = '1.9.22'
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.0'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          """
+          with open("android/build.gradle", "w") as f:
+              f.write(build_gradle)
+          print("build.gradle reescrito com kotlin 1.9.22!")
+
+          # Reescrever AndroidManifest com v2 embedding e GPS
           manifest = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -98,6 +124,72 @@ jobs:
           with open("android/app/src/main/AndroidManifest.xml", "w") as f:
               f.write(manifest)
           print("AndroidManifest atualizado!")
+
+          # Reescrever app/build.gradle
+          app_gradle = """def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterRoot = localProperties.getProperty('flutter.sdk')
+          if (flutterRoot == null) {
+              throw new GradleException("Flutter SDK not found.")
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+          def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+
+          apply plugin: 'com.android.application'
+          apply plugin: 'kotlin-android'
+          apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+
+          android {
+              namespace "com.maicola.locmaicola"
+              compileSdkVersion 34
+              ndkVersion flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.maicola.locmaicola"
+                  minSdkVersion 21
+                  targetSdkVersion 34
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.debug
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+
+          dependencies {
+              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22"
+          }
+          """
+          with open("android/app/build.gradle", "w") as f:
+              f.write(app_gradle)
+          print("app/build.gradle reescrito!")
           PYEOF
 
       - name: Build APK
