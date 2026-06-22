@@ -80,7 +80,7 @@ jobs:
           print("AndroidManifest corrigido!")
           PYEOF
 
-          # Corrigir settings.gradle.kts para usar Kotlin 2.3.20 corretamente
+          # Atualizar settings.gradle.kts com versoes corretas
           cat > android/settings.gradle.kts << 'KTS'
           pluginManagement {
               val flutterSdkPath = run {
@@ -99,7 +99,7 @@ jobs:
           }
           plugins {
               id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-              id("com.android.application") version "8.7.0" apply false
+              id("com.android.application") version "8.9.1" apply false
               id("org.jetbrains.kotlin.android") version "2.0.21" apply false
           }
           include(":app")
